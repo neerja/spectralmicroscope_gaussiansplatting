@@ -1,0 +1,4 @@
+# Ignore calibration data
+Calibration_data/
+Results/
+Sample_Objects/
