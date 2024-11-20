@@ -112,15 +112,16 @@ def createGaussFilter(covariance_matrix, coordinates, nx, ny, amplitude):
     """
     Create a Gaussian filter, which is a 2D Gaussian distribution in the spatial domain.
     """
+    # TODO: changed the inverse filter
     mean = torch.zeros(2, device=device) # only computing magnitude of F(G)
     cov_inv = torch.inverse(covariance_matrix)
-    cov_inv = 1 / (2 * torch.pi) ** 2 * cov_inv # get covariance matrix of F(G)
     cov_inv = (cov_inv + cov_inv.T)/2.0 # make it positive definite
     print(cov_inv)
 
     mvn = MultivariateNormal(mean, cov_inv)
     gauss_f_values = mvn.log_prob(coordinates).exp() * amplitude
     print(gauss_f_values)
+    gauss_f_values = 2 * torch.pi * sigx * sigy * gauss_f_values # TODO: what scalar?
     return gauss_f_values.view(ny, nx)
 
 #     mean = torch.zeros(2, device=device)
