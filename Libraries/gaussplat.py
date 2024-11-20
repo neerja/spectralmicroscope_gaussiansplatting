@@ -121,6 +121,9 @@ def createGaussFilter(covariance_matrix, coordinates, nx, ny, amplitude):
     mvn = MultivariateNormal(mean, cov_inv)
     gauss_f_values = mvn.log_prob(coordinates).exp() * amplitude
     print(gauss_f_values)
+
+    sigx = covariance_matrix[0,0]**(1/2)
+    sigy = covariance_matrix[1,1]**(1/2)
     gauss_f_values = 2 * torch.pi * sigx * sigy * gauss_f_values # TODO: what scalar?
     return gauss_f_values.view(ny, nx)
 
