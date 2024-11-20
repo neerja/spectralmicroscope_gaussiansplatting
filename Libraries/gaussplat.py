@@ -8,6 +8,7 @@ from torch.distributions.multivariate_normal import MultivariateNormal
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class GaussObject:
+
     def __init__(self, muy=0.0, mux=0.0, mul=0.0, sigy=1.0, sigx=1.0, sigl=1.0, amp=1.0, learningrate=0.01):
         self.initParams(muy, mux, mul, sigy, sigx, sigl, amp)
         self.optimizer = torch.optim.Adam([self.mux, self.muy], lr=learningrate)
@@ -32,6 +33,7 @@ class GaussObject:
         multivariate_normal = MultivariateNormal(mean, covariance_matrix)
         pdf_values = multivariate_normal.log_prob(coordinates).exp() * self.amplitude
         return pdf_values.view(ny, nx)
+    
 
     def plot(self, coordinates, ny, nx):
         """
@@ -112,28 +114,20 @@ def createGaussFilter(covariance_matrix, coordinates, nx, ny, amplitude):
     """
     Create a Gaussian filter, which is a 2D Gaussian distribution in the spatial domain.
     """
-    mean = torch.zeros(2, device=device) # only computing magnitude of F(G)
-    cov_inv = torch.inverse(covariance_matrix)
-    cov_inv = 1 / (2 * torch.pi) ** 2 * cov_inv # get covariance matrix of F(G)
-    cov_inv = (cov_inv + cov_inv.T)/2.0 # make it positive definite
-    print(cov_inv)
-
-    mvn = MultivariateNormal(mean, cov_inv)
-    gauss_f_values = mvn.log_prob(coordinates).exp() * amplitude
-    print(gauss_f_values)
-    return gauss_f_values.view(ny, nx)
-
-#     mean = torch.zeros(2, device=device)
-#     # Scale the covariance matrix
-#     scaleFactor = torch.diag(torch.tensor([sf * nx**2, sf * ny**2], device=device))
-#     filterVar = torch.matmul(scaleFactor, covariance_matrix)
-#     # Ensure the covariance matrix is positive-definite
-#     filterVar = (filterVar + filterVar.T) / 2.0
-#     # Create a multivariate normal distribution
-#     mvn = MultivariateNormal(mean, filterVar)
-#     # Compute the probability density values of the Gaussian filter
-#     pdf_values = mvn.log_prob(coordinates).exp() * amplitude
-#     return pdf_values.view(ny, nx)
+    # Extract standard deviations from covariance matrix
+    sigx2 = covariance_matrix[1,1]  # σx²
+    sigy2 = covariance_matrix[0,0]  # σy²
+    
+    # Get x and y coordinates
+    y = coordinates[:,0]  # First column is y
+    x = coordinates[:,1]  # Second column is x
+    
+    # Compute Gaussian: A * exp(-(x²/2σx² + y²/2σy²))
+    sf = 2*torch.pi*torch.sqrt(sigx2)*torch.sqrt(sigy2)
+    gauss_values = amplitude * sf* torch.exp(-(x*x/(2*(1/sigx2)) + y*y/(2*(1/sigy2))))
+    
+    print(gauss_values)
+    return gauss_values.view(ny, nx)
 
 
 def createPhasor(x, y, xshift, yshift):
