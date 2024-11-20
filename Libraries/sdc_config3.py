@@ -143,7 +143,7 @@ def crop2d(x):
     return xcrop
 
 def forwardmodel3d(xpad,hfftpad,m):
-    #use fft to do convolution between x and h.
+    # use fft to do convolution between x and h.
     # torch does fft on LAST two dimensions
     #hfft = torch.fft.fft2(h,dim=(0,1))
     y = torch.fft.fftshift(torch.fft.ifft2(torch.multiply(fft3d(xpad),hfftpad),dim=(0,1)),dim=(0,1))
