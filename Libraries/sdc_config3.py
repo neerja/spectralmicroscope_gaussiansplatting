@@ -119,7 +119,7 @@ def inversemodel(y,hfftpad,m):
     dims = m.shape
     y = y.repeat(dims[2],1,1).permute(1,2,0) #cascade it along the third dimension
     y = torch.divide(y,m) #divide by m
-    y = pad3d(y) #pad y
+    y = pad(y) #pad y
     y = torch.fft.fft2(y,dim=(0,1)) #fft
     x = torch.fft.fftshift(torch.fft.ifft2(torch.divide(y,hfftpad),dim=(0,1)),dim=(0,1)) #deconv
     return torch.abs(x)
@@ -129,7 +129,7 @@ def adjointoperation(y,hfftpad,m):
     dims = m.shape
     y = y.repeat(dims[2],1,1).permute(1,2,0) #cascade it along the third dimension
     y = torch.multiply(y,m) #still do multiplyication for adjoint
-    y = pad3d(y) #pad y
+    y = pad(y) #pad y
     y = fft3d(y) #fft
     x = torch.fft.fftshift(torch.fft.ifft2(torch.multiply(y,torch.conj(hfftpad)),dim=(0,1)),dim=(0,1)) #deconv
     return torch.real(x)
