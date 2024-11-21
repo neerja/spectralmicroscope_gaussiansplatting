@@ -64,19 +64,22 @@ def createMeshGrid(nx,ny):
     return [x,y, coordinates]
 
 
-def createGaussFilter(covariance_matrix, coordinates,nx,ny, amplitude, sf = 1e-8):
-    mean = torch.tensor([0.0, 0.0])
-    scaleFactor = torch.tensor([[sf*nx**2, 0.0],[  0.0, sf*ny**2]])
-    filterVar = torch.matmul(scaleFactor,covariance_matrix)
+def createGaussFilter(covariance_matrix, coordinates,nx,ny, amplitude, sf = 1):
+    # sf = empirical scaling factor to make filter roloff in the right place
+    # compute inverse of gauss object covariance matrix to use as the filter variance
+    scaleFactor = torch.tensor([[sf*ny**2, 0.0],[  0.0, sf*nx**2]]) 
+    sigx = covariance_matrix[1,1]
+    sigy = covariance_matrix[0,0]
+    covinv = torch.tensor([[1/sigy**2, 0.0],[0.0, 1/sigx**2]])
+    filterVar = torch.matmul(scaleFactor,covinv)
     filterVar = (filterVar + filterVar.t()) / 2.0  # ensure that it's positive-definite
-
-    # Create a MultivariateNormal distribution
+    # create a multivariate normal distribution with the filter variance centered at the origin
+    mean = torch.tensor([0.0, 0.0])
     mvn = MultivariateNormal(mean, filterVar)
     # Evaluate the PDF at each point in the grid
-    pdf_values = mvn.log_prob(coordinates).exp() * amplitude #TODO: maybe replace with my own implementation so I can be sure of the scaling? 
-    pdf_values = pdf_values.view(ny, nx) # doesn't work the other way
-    
-
+    pdf_values = mvn.log_prob(coordinates).to(torch.complex64).exp() * amplitude  
+    pdf_values = pdf_values.view(ny, nx)
+    pdf_values = pdf_values/torch.amax(torch.abs(pdf_values))
     return pdf_values
 
 
@@ -104,8 +107,8 @@ def computeMeas(Hfft,pdf_values,phasor, mout):
     return b
 
 
-def forwardSingleGauss(g, coordinates, nx,ny, lam, Hfft,x,y,m):
-    pdf_values = createGaussFilter(g.covariancematrix, coordinates, nx,ny, g.amplitude)
+def forwardSingleGauss(g, coordinates, nx, ny, lam, Hfft, x, y, m, sf = 1):
+    pdf_values = createGaussFilter(g.covariancematrix, coordinates, nx, ny, g.amplitude, sf)
     (phasor,phase_ramp) = createPhasor(x,y,g.mux,g.muy)
     mout = createWVFilt(lam,g.mul,g.sigl,m)
     b = computeMeas(Hfft,pdf_values,phasor,mout)
