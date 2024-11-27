@@ -3,17 +3,16 @@ import torch
 import numpy as np
 import matplotlib.pyplot as plt
 from torch.distributions.multivariate_normal import MultivariateNormal
-
+import sdc_config3 as sdc
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class GaussObject:
 
     def __init__(self, muy=0.0, mux=0.0, mul=0.0, sigy=1.0, sigx=1.0, sigl=1.0, amp=1.0, learningrate=0.01):
-        self.initParams(muy, mux, mul, sigy, sigx, sigl, amp)
-        self.optimizer = torch.optim.Adam([self.mux, self.muy], lr=learningrate)
+        self.initParams(muy, mux, mul, sigy, sigx, sigl, amp, learningrate)
 
-    def initParams(self,muy,mux,mul,sigy,sigx,sigl, amp): 
+    def initParams(self,muy,mux,mul,sigy,sigx,sigl,amp,learningrate): 
         self.mux = torch.tensor(mux, requires_grad=True, device=device)
         self.muy = torch.tensor(muy, requires_grad=True, device=device)
         self.mul = torch.tensor(mul, requires_grad=True, device=device)
@@ -22,6 +21,8 @@ class GaussObject:
         self.sigl = torch.tensor(sigl, requires_grad=True, device=device)
         self.covariancematrix = torch.tensor([[sigy**2, 0.0], [0.0, sigx**2]], requires_grad=True, device=device)
         self.amplitude = torch.tensor(amp, requires_grad=True, device=device)
+        self.learningrate = learningrate
+        self.optimizer = torch.optim.Adam([self.mux, self.muy], lr=self.learningrate)
 
     def __str__(self):
         return f"gaussObject(mu_x = {self.mux}, mu_y = {self.muy}, mu_l = {self.mul}), cov = {self.covariancematrix}"
@@ -33,15 +34,6 @@ class GaussObject:
         multivariate_normal = MultivariateNormal(mean, covariance_matrix)
         pdf_values = multivariate_normal.log_prob(coordinates).exp() * self.amplitude
         return pdf_values.view(ny, nx)
-    
-    # # try to implement my own version - neerja
-    # def computeValues2(self, coordinates, ny, nx):
-    #     """Compute the values of the Gaussian object at the given coordinates."""
-    #     x = coordinates[:,1]
-    #     y = coordinates[:,0]
-    #     sf = 2*torch.pi*torch.sqrt(self.sigx)*torch.sqrt(self.sigy)
-    #     pdf_values = self.amplitude * sf* torch.exp(-(x*x/(2*(1/self.sigx**2)) + y*y/(2*(1/self.sigy**2))))
-    #     return pdf_values.view(ny, nx) #TODO: check if this is correct
     
     def plot(self, coordinates, ny, nx):
         """
@@ -117,28 +109,11 @@ def createMeshGrid(nx, ny):
     coordinates = torch.stack([y.flatten(), x.flatten()], dim=1)
     return [x, y, coordinates]
 
-    # # try to implement my own version - neerja
-# def createGaussFilter2(covariance_matrix, coordinates, nx, ny, amplitude): # try to implement my own version
-#     """
-#     Create a Gaussian filter, which is a 2D Gaussian distribution in the spatial domain.
-#     """
-#     # Extract standard deviations from covariance matrix
-#     sigx2 = covariance_matrix[1,1]  # σx²
-#     sigy2 = covariance_matrix[0,0]  # σy²
-    
-#     # Get x and y coordinates
-#     y = coordinates[:,0]  # First column is y
-#     x = coordinates[:,1]  # Second column is x
-    
-#     # Compute Gaussian: A * exp(-(x²/2σx² + y²/2σy²))
-#     sf = 2*torch.pi*torch.sqrt(sigx2)*torch.sqrt(sigy2)
-#     gauss_values = amplitude * sf* torch.exp(-(x*x/(2*(1/sigx2)) + y*y/(2*(1/sigy2))))
-    
-#     print(gauss_values)
-#     return gauss_values.view(ny, nx)
 
-def createGaussFilter(covariance_matrix, coordinates,nx,ny, amplitude):
-
+def createGaussFilter(covariance_matrix, coordinates, nx, ny, amplitude):
+    '''
+    Create the magnitude of the Fourier transform of the Gauss object
+    '''
     # compute inverse of gauss object covariance matrix to use as the filter variance
     sigx2 = covariance_matrix[1,1]
     sigy2 = covariance_matrix[0,0]
@@ -147,24 +122,44 @@ def createGaussFilter(covariance_matrix, coordinates,nx,ny, amplitude):
     scaleFactor = torch.tensor([[(ny/(2*np.pi))**2, 0.0],[  0.0, (nx/(2*np.pi))**2]]) 
     filterVar = torch.matmul(scaleFactor,covinv)
     filterVar = (filterVar + filterVar.t()) / 2.0  # ensure that it's positive-definite
-    print(filterVar)
-
+    
     # create a multivariate normal distribution with the filter variance centered at the origin
     mean = torch.tensor([0.0, 0.0])
     mvn = MultivariateNormal(mean, filterVar)
     # Evaluate the PDF at each point in the grid
     pdf_values = mvn.log_prob(coordinates).to(torch.complex64).exp() * amplitude  
     pdf_values = pdf_values.view(ny, nx)
+    # Normalize to have max 1
     pdf_values = pdf_values/torch.amax(torch.abs(pdf_values))
+    # TODO: multiply by amplitude?
 
     return pdf_values
 
 
+def createGaussFilterPadded(covariance_matrix, nx, ny, amplitude):
+    '''
+    Create the magnitude of the Fourier transform of the Gauss object, at twice the resolution
+    '''
+    [x_padded,y_padded,coordinates_padded] = createMeshGrid(nx*2, ny*2)
+    return createGaussFilter(covariance_matrix, coordinates_padded, nx*2, ny*2, amplitude)
+
+
 def createPhasor(x, y, xshift, yshift):
+    '''
+    Create the phase of the Fourier transform of the Gauss object
+    '''
     phase_ramp = 2.0 * torch.pi * (-1 * (xshift * x) - (yshift * y))
     phasor = torch.exp(1j * phase_ramp)
     return phasor, phase_ramp
 
+
+def createPhasorPadded(nx, ny, xshift, yshift):
+    '''
+    Create the phase of the Fourier transform of the Gauss object, at twice the resolution
+    '''
+    [x_padded,y_padded,coordinates_padded] = createMeshGrid(nx*2, ny*2)
+    return createPhasor(x_padded, y_padded, xshift, yshift)
+    
 
 def createWVFilt(lam, mul, sigl, m):
     gaus_lam = torch.exp(-(lam - mul)**2 / (2 * sigl**2))
@@ -173,21 +168,35 @@ def createWVFilt(lam, mul, sigl, m):
 
 
 # this step calculates the measurement values
-def computeMeas(Hfft, pdf_values, phasor, mout):
-    # multiply by the Fourier transform of the point spread function
-    bfft = Hfft * pdf_values
-    bfft2 = bfft * phasor
-    bout = torch.fft.ifft2(torch.fft.fftshift(bfft2))
-     # multiply by the weighted gaussian filter
-    # can be seen as amplitude modulation where the output values are scaled by the modulation function.
+def computeMeas(hf_padded, gauss_fm_padded, gauss_fp_padded, mout):
+    '''
+    h_expanded: The PSF in the spatial domain, expanded to match the dimensions of pdf_values, phasor, and mout
+    pdf_values: The magnitude of the FT of the Gaussian object
+    phasor: The phase of the FT of the Gaussian object
+    mout: The wavelength filter, created with the calibration filter array and Gaussian object's wavelength distribution
+    '''
+    # convolve in frequency domain; with padded arrays
+    bfm = hf_padded * gauss_fm_padded
+    bf = bfm * gauss_fp_padded
+    bout_padded = torch.fft.ifft2(torch.fft.fftshift(bf))
+    
+    # crop to remove padding
+    ny, nx = bout_padded.shape
+    cy, cx = ny // 2, nx // 2
+    half_ny, half_nx = cy // 2, cx // 2
+    bout = bout_padded[cy - half_ny: cy + half_ny, cx - half_nx: cx + half_nx]
+
+    # multiply by the weighted gaussian filter for wavelengths
     b = (torch.abs(bout) * mout)
     return b
 
 # this step calculates the measurement values for a single gaussian object
 
-def forwardSingleGauss(g, coordinates, nx, ny, lam, Hfft, x, y, m, sf = 1):
-    pdf_values = createGaussFilter(g.covariancematrix, coordinates, nx, ny, g.amplitude, sf)
-    phasor, _ = createPhasor(x, y, g.mux, g.muy)
+def forwardSingleGauss(g, nx, ny, lam, h_expanded, m):
+    gauss_fm_padded = createGaussFilterPadded(g.covariancematrix, nx, ny, g.amplitude)
+    gauss_fp_padded, _ = createPhasorPadded(nx, ny, g.mux, g.muy)
     mout = createWVFilt(lam, g.mul, g.sigl, m)
-    return computeMeas(Hfft, pdf_values, phasor, mout)
+    h_padded = sdc.pad(h_expanded) # TODO
+    hf_padded = torch.fft.fftshift(torch.fft.fft2(h_padded))
+    return computeMeas(hf_padded, gauss_fm_padded, gauss_fp_padded, mout)
 
