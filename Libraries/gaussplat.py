@@ -161,8 +161,18 @@ def createPhasorPadded(nx, ny, xshift, yshift):
     return createPhasor(x_padded, y_padded, xshift, yshift)
     
 
-def createWVFilt(lam, mul, sigl, m):
-    gaus_lam = torch.exp(-(lam - mul)**2 / (2 * sigl**2))
+def createWVFilt(mul, sigl, nl, m):
+    mean = torch.tensor([mul], device=device)
+    scale_factors = torch.tensor([sigl**2], device=device)
+    covariance_matrix = torch.diag(scale_factors)  # No covariance, diagonal matrix
+
+    coords = [torch.arange(-s // 2, s // 2, device=device, dtype=torch.float32) for s in [nl]]
+    grid = torch.meshgrid(coords, indexing='ij')
+    coordinates = torch.stack([g.flatten() for g in grid], dim=1)
+
+    mvn = MultivariateNormal(mean, covariance_matrix)
+    gaus_lam = mvn.log_prob(coordinates).exp()
+
     mout = torch.sum(m * gaus_lam, dim=2)
     return mout
 
@@ -192,10 +202,10 @@ def computeMeas(hf_padded, gauss_fm_padded, gauss_fp_padded, mout):
 
 # this step calculates the measurement values for a single gaussian object
 
-def forwardSingleGauss(g, nx, ny, lam, h_expanded, m):
+def forwardSingleGauss(g, nx, ny, nl, h_expanded, m):
     gauss_fm_padded = createGaussFilterPadded(g.covariancematrix, nx, ny, g.amplitude)
     gauss_fp_padded, _ = createPhasorPadded(nx, ny, g.mux, g.muy)
-    mout = createWVFilt(lam, g.mul, g.sigl, m)
+    mout = createWVFilt(g.mul, g.sigl, nl, m)
     h_padded = sdc.pad(h_expanded) # TODO
     hf_padded = torch.fft.fftshift(torch.fft.fft2(h_padded))
     return computeMeas(hf_padded, gauss_fm_padded, gauss_fp_padded, mout)
