@@ -137,17 +137,17 @@ def createMeshGrid(nx, ny):
 #     print(gauss_values)
 #     return gauss_values.view(ny, nx)
 
-def createGaussFilter(covariance_matrix, coordinates,nx,ny, amplitude, sf = 1):
-
-    # sf = empirical scaling factor to make filter roloff in the right place
+def createGaussFilter(covariance_matrix, coordinates,nx,ny, amplitude):
 
     # compute inverse of gauss object covariance matrix to use as the filter variance
-    scaleFactor = torch.tensor([[sf*ny**2, 0.0],[  0.0, sf*nx**2]]) 
-    sigx = covariance_matrix[1,1]
-    sigy = covariance_matrix[0,0]
-    covinv = torch.tensor([[1/sigy**2, 0.0],[0.0, 1/sigx**2]])
+    sigx2 = covariance_matrix[1,1]
+    sigy2 = covariance_matrix[0,0]
+    covinv = torch.tensor([[1/sigy2, 0.0],[0.0, 1/sigx2]])
+    # DFT scaling: scale standard deviation by side length / 2*pi
+    scaleFactor = torch.tensor([[(ny/(2*np.pi))**2, 0.0],[  0.0, (nx/(2*np.pi))**2]]) 
     filterVar = torch.matmul(scaleFactor,covinv)
     filterVar = (filterVar + filterVar.t()) / 2.0  # ensure that it's positive-definite
+    print(filterVar)
 
     # create a multivariate normal distribution with the filter variance centered at the origin
     mean = torch.tensor([0.0, 0.0])
