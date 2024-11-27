@@ -30,7 +30,7 @@ class GaussObject:
     def computeValues(self, coordinates, ny, nx):
         """Compute the values of the Gaussian object at the given coordinates."""
         mean = torch.tensor([self.muy, self.mux], device=device)
-        covariance_matrix = self.covariancematrix
+        covariance_matrix = torch.tensor([[self.sigy**2, 0.0], [0.0, self.sigx**2]])
         multivariate_normal = MultivariateNormal(mean, covariance_matrix)
         pdf_values = multivariate_normal.log_prob(coordinates).exp() * self.amplitude
         return pdf_values.view(ny, nx)
@@ -148,8 +148,8 @@ def createPhasor(x, y, xshift, yshift):
     '''
     Create the phase of the Fourier transform of the Gauss object
     '''
-    phase_ramp = 2.0 * torch.pi * (-1 * (xshift * x) - (yshift * y))
-    phasor = torch.exp(1j * phase_ramp)
+    phase_ramp = 2.0 * torch.pi * (-1. * (xshift * x) - (yshift * y))
+    phasor = torch.cos(phase_ramp) + 1j * torch.sin(phase_ramp)
     return phasor, phase_ramp
 
 
