@@ -19,10 +19,10 @@ class GaussObject:
         self.sigx = torch.tensor(sigx, requires_grad=True, device=device)
         self.sigy = torch.tensor(sigy, requires_grad=True, device=device)
         self.sigl = torch.tensor(sigl, requires_grad=True, device=device)
-        self.covariancematrix = torch.tensor([[sigy**2, 0.0], [0.0, sigx**2]], requires_grad=True, device=device)
+        self.covariancematrix = torch.tensor([[self.sigy**2, 0.0], [0.0, self.sigx**2]], requires_grad=True, device=device)
         self.amplitude = torch.tensor(amp, requires_grad=True, device=device)
         self.learningrate = learningrate
-        self.optimizer = torch.optim.Adam([self.mux, self.muy], lr=self.learningrate)
+        self.optimizer = torch.optim.Adam([self.mux, self.muy], lr=self.learningrate) # add new params in
 
     def __str__(self):
         return f"gaussObject(mu_x = {self.mux}, mu_y = {self.muy}, mu_l = {self.mul}), cov = {self.covariancematrix}"
