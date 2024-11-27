@@ -66,7 +66,7 @@ class GaussObject:
         """
         Create 3D pixel representation of Gaussian
         """
-        mean = torch.tensor([self.muy, self.mux, self.mul], device=device, requires_grad=True)
+        mean = torch.tensor([self.muy, self.mux, self.mul], device=device)
         scale_factors = torch.tensor([self.sigy**2, self.sigx**2, self.sigl**2], device=device)
         covariance_matrix = torch.diag(scale_factors)  # No covariance, diagonal matrix
 
