@@ -8,6 +8,7 @@ from torch.distributions.multivariate_normal import MultivariateNormal
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class GaussObject:
+
     def __init__(self, muy=0.0, mux=0.0, mul=0.0, sigy=1.0, sigx=1.0, sigl=1.0, amp=1.0, learningrate=0.01):
         self.initParams(muy, mux, mul, sigy, sigx, sigl, amp)
         self.optimizer = torch.optim.Adam([self.mux, self.muy], lr=learningrate)
@@ -32,7 +33,16 @@ class GaussObject:
         multivariate_normal = MultivariateNormal(mean, covariance_matrix)
         pdf_values = multivariate_normal.log_prob(coordinates).exp() * self.amplitude
         return pdf_values.view(ny, nx)
-
+    
+    # # try to implement my own version - neerja
+    # def computeValues2(self, coordinates, ny, nx):
+    #     """Compute the values of the Gaussian object at the given coordinates."""
+    #     x = coordinates[:,1]
+    #     y = coordinates[:,0]
+    #     sf = 2*torch.pi*torch.sqrt(self.sigx)*torch.sqrt(self.sigy)
+    #     pdf_values = self.amplitude * sf* torch.exp(-(x*x/(2*(1/self.sigx**2)) + y*y/(2*(1/self.sigy**2))))
+    #     return pdf_values.view(ny, nx) #TODO: check if this is correct
+    
     def plot(self, coordinates, ny, nx):
         """
         Plot the values of the Gaussian object.
@@ -107,37 +117,47 @@ def createMeshGrid(nx, ny):
     coordinates = torch.stack([y.flatten(), x.flatten()], dim=1)
     return [x, y, coordinates]
 
+    # # try to implement my own version - neerja
+# def createGaussFilter2(covariance_matrix, coordinates, nx, ny, amplitude): # try to implement my own version
+#     """
+#     Create a Gaussian filter, which is a 2D Gaussian distribution in the spatial domain.
+#     """
+#     # Extract standard deviations from covariance matrix
+#     sigx2 = covariance_matrix[1,1]  # σx²
+#     sigy2 = covariance_matrix[0,0]  # σy²
+    
+#     # Get x and y coordinates
+#     y = coordinates[:,0]  # First column is y
+#     x = coordinates[:,1]  # Second column is x
+    
+#     # Compute Gaussian: A * exp(-(x²/2σx² + y²/2σy²))
+#     sf = 2*torch.pi*torch.sqrt(sigx2)*torch.sqrt(sigy2)
+#     gauss_values = amplitude * sf* torch.exp(-(x*x/(2*(1/sigx2)) + y*y/(2*(1/sigy2))))
+    
+#     print(gauss_values)
+#     return gauss_values.view(ny, nx)
 
-def createGaussFilter(covariance_matrix, coordinates, nx, ny, amplitude):
-    """
-    Create a Gaussian filter, which is a 2D Gaussian distribution in the spatial domain.
-    """
-    # TODO: changed the inverse filter
-    mean = torch.zeros(2, device=device) # only computing magnitude of F(G)
-    cov_inv = torch.inverse(covariance_matrix)
-    cov_inv = (cov_inv + cov_inv.T)/2.0 # make it positive definite
-    print(cov_inv)
+def createGaussFilter(covariance_matrix, coordinates,nx,ny, amplitude, sf = 1):
 
-    mvn = MultivariateNormal(mean, cov_inv)
-    gauss_f_values = mvn.log_prob(coordinates).exp() * amplitude
-    print(gauss_f_values)
+    # sf = empirical scaling factor to make filter roloff in the right place
 
-    sigx = covariance_matrix[0,0]**(1/2)
-    sigy = covariance_matrix[1,1]**(1/2)
-    gauss_f_values = 2 * torch.pi * sigx * sigy * gauss_f_values # TODO: what scalar?
-    return gauss_f_values.view(ny, nx)
+    # compute inverse of gauss object covariance matrix to use as the filter variance
+    scaleFactor = torch.tensor([[sf*ny**2, 0.0],[  0.0, sf*nx**2]]) 
+    sigx = covariance_matrix[1,1]
+    sigy = covariance_matrix[0,0]
+    covinv = torch.tensor([[1/sigy**2, 0.0],[0.0, 1/sigx**2]])
+    filterVar = torch.matmul(scaleFactor,covinv)
+    filterVar = (filterVar + filterVar.t()) / 2.0  # ensure that it's positive-definite
 
-#     mean = torch.zeros(2, device=device)
-#     # Scale the covariance matrix
-#     scaleFactor = torch.diag(torch.tensor([sf * nx**2, sf * ny**2], device=device))
-#     filterVar = torch.matmul(scaleFactor, covariance_matrix)
-#     # Ensure the covariance matrix is positive-definite
-#     filterVar = (filterVar + filterVar.T) / 2.0
-#     # Create a multivariate normal distribution
-#     mvn = MultivariateNormal(mean, filterVar)
-#     # Compute the probability density values of the Gaussian filter
-#     pdf_values = mvn.log_prob(coordinates).exp() * amplitude
-#     return pdf_values.view(ny, nx)
+    # create a multivariate normal distribution with the filter variance centered at the origin
+    mean = torch.tensor([0.0, 0.0])
+    mvn = MultivariateNormal(mean, filterVar)
+    # Evaluate the PDF at each point in the grid
+    pdf_values = mvn.log_prob(coordinates).to(torch.complex64).exp() * amplitude  
+    pdf_values = pdf_values.view(ny, nx)
+    pdf_values = pdf_values/torch.amax(torch.abs(pdf_values))
+
+    return pdf_values
 
 
 def createPhasor(x, y, xshift, yshift):
@@ -165,8 +185,8 @@ def computeMeas(Hfft, pdf_values, phasor, mout):
 
 # this step calculates the measurement values for a single gaussian object
 
-def forwardSingleGauss(g, coordinates, nx, ny, lam, Hfft, x, y, m):
-    pdf_values = createGaussFilter(g.covariancematrix, coordinates, nx, ny, g.amplitude)
+def forwardSingleGauss(g, coordinates, nx, ny, lam, Hfft, x, y, m, sf = 1):
+    pdf_values = createGaussFilter(g.covariancematrix, coordinates, nx, ny, g.amplitude, sf)
     phasor, _ = createPhasor(x, y, g.mux, g.muy)
     mout = createWVFilt(lam, g.mul, g.sigl, m)
     return computeMeas(Hfft, pdf_values, phasor, mout)
