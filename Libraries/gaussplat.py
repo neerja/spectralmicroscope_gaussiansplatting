@@ -127,10 +127,11 @@ def createGaussFilter(covariance_matrix, coordinates, nx, ny, amplitude):
     mean = torch.tensor([0.0, 0.0])
     mvn = MultivariateNormal(mean, filterVar)
     # Evaluate the PDF at each point in the grid
-    pdf_values = mvn.log_prob(coordinates).to(torch.complex64).exp() * amplitude  
+#     pdf_values = mvn.log_prob(coordinates).to(torch.complex64).exp() * amplitude  
+    pdf_values = mvn.log_prob(coordinates).exp() * amplitude  
     pdf_values = pdf_values.view(ny, nx)
     # Normalize to have max 1
-    pdf_values = pdf_values/torch.amax(torch.abs(pdf_values))
+    pdf_values = pdf_values/torch.amax(pdf_values)
     # TODO: multiply by amplitude?
 
     return pdf_values
@@ -148,7 +149,7 @@ def createPhasor(x, y, xshift, yshift):
     '''
     Create the phase of the Fourier transform of the Gauss object
     '''
-    phase_ramp = 2.0 * torch.pi * (-1. * (xshift * x) - (yshift * y))
+    phase_ramp = 2.0 * torch.pi * (- (xshift * x / x.shape[1]) - (yshift * y / y.shape[0]))
     phasor = torch.cos(phase_ramp) + 1j * torch.sin(phase_ramp)
     return phasor, phase_ramp
 
