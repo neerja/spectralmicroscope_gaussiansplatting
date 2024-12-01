@@ -22,7 +22,7 @@ class GaussObject:
         self.covariancematrix = torch.tensor([[self.sigy**2, 0.0], [0.0, self.sigx**2]], requires_grad=True, device=device)
         self.amplitude = torch.tensor(amp, requires_grad=True, device=device)
         self.learningrate = learningrate
-        self.optimizer = torch.optim.Adam([self.mux, self.muy], lr=self.learningrate) # add new params in
+        self.optimizer = torch.optim.Adam([self.mux, self.muy, self.mul], lr=self.learningrate) # add new params in
 
     def __str__(self):
         return f"gaussObject(mu_x = {self.mux}, mu_y = {self.muy}, mu_l = {self.mul}), cov = {self.covariancematrix}"
@@ -151,6 +151,7 @@ def createPhasor(x, y, xshift, yshift):
     '''
     phase_ramp = 2.0 * torch.pi * (- (xshift * x / x.shape[1]) - (yshift * y / y.shape[0]))
     phasor = torch.cos(phase_ramp) + 1j * torch.sin(phase_ramp)
+    print(xshift)
     return phasor, phase_ramp
 
 
@@ -164,6 +165,7 @@ def createPhasorPadded(nx, ny, xshift, yshift):
 
 def createWVFilt(mul, sigl, nl, m):
     mean = torch.tensor([mul], device=device)
+    print(mul)
     scale_factors = torch.tensor([sigl**2], device=device)
     covariance_matrix = torch.diag(scale_factors)  # No covariance, diagonal matrix
 
