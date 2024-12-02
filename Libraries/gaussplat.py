@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 from torch.distributions.multivariate_normal import MultivariateNormal
 import sdc_config3 as sdc
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device("cpu") #"cuda" if torch.cuda.is_available() else 
 
 class GaussObject:
 

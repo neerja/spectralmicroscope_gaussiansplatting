@@ -16,7 +16,7 @@ l2losslist = 0
 
 gpu = 2
 os.environ['CUDA_DEVICE_ORDER'] = 'PCI_BUS_ID'
-device = torch.device("cuda:"+str(gpu) if torch.cuda.is_available() else "cpu")
+device = torch.device("cpu") #"cuda:"+str(gpu) if torch.cuda.is_available() else 
 
 def sumFilterArray(filterstack,wv,wvmin,wvmax,wvstep):
     #filterstack is ndarray.  wvmin, wvmax, wvstep are scalers
