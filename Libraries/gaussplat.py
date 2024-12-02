@@ -19,13 +19,12 @@ class GaussObject:
         self.sigx = torch.tensor(sigx, requires_grad=True, device=device)
         self.sigy = torch.tensor(sigy, requires_grad=True, device=device)
         self.sigl = torch.tensor(sigl, requires_grad=True, device=device)
-        self.covariancematrix = torch.tensor([[sigy**2, 0.0], [0.0, sigx**2]], requires_grad=True, device=device)
         self.amplitude = torch.tensor(amp, requires_grad=True, device=device)
         self.learningrate = learningrate
-        self.optimizer = torch.optim.Adam([self.mux, self.muy, self.mul, self.sigl], lr=self.learningrate) # add new params in
+        self.optimizer = torch.optim.Adam([self.mux, self.muy, self.mul, self.sigx, self.sigy, self.sigl], lr=self.learningrate) # add new params in
 
     def __str__(self):
-        return f"gaussObject(mu_x = {self.mux}, mu_y = {self.muy}, mu_l = {self.mul}), cov = {self.covariancematrix}"
+        return f"gaussObject(mu_x = {self.mux}, mu_y = {self.muy}, mu_l = {self.mul}), sig_x = {self.sigx}, sig_y = {self.sigy}, sig_l = {self.sigl}"
     
     def computeValues(self, coordinates, ny, nx):
         """Compute the values of the Gaussian object at the given coordinates."""
@@ -110,36 +109,46 @@ def createMeshGrid(nx, ny):
     return [x, y, coordinates]
 
 
-def createGaussFilter(sigx, sigy, coordinates, nx, ny, amplitude):
-    '''
-    Create the magnitude of the Fourier transform of the Gauss object
-    '''
-    # compute inverse of gauss object covariance matrix to use as the filter variance
-    covinv = torch.tensor([[1/(sigy**2), 0.0],[0.0, 1/(sigy**2)]], requires_grad=True)
-    # DFT scaling: scale standard deviation by side length / 2*pi
-    scaleFactor = torch.tensor([[(ny/(2*np.pi))**2, 0.0],[  0.0, (nx/(2*np.pi))**2]], requires_grad=True) 
-    filterVar = torch.matmul(scaleFactor,covinv)
-    filterVar = (filterVar + filterVar.t()) / 2.0  # ensure that it's positive-definite
+# def createGaussFilter(sigx, sigy, coordinates, nx, ny, amplitude):
+#     '''
+#     Create the magnitude of the Fourier transform of the Gauss object
+#     '''
+#     # compute inverse of gauss object covariance matrix to use as the filter variance
+#     covinv = torch.tensor([[1/(sigy**2), 0.0],[0.0, 1/(sigy**2)]], requires_grad=True)
+#     # DFT scaling: scale standard deviation by side length / 2*pi
+#     scaleFactor = torch.tensor([[(ny/(2*np.pi))**2, 0.0],[  0.0, (nx/(2*np.pi))**2]], requires_grad=True) 
+#     filterVar = torch.matmul(scaleFactor,covinv)
+#     filterVar = (filterVar + filterVar.t()) / 2.0  # ensure that it's positive-definite
     
-    # create a multivariate normal distribution with the filter variance centered at the origin
-    mean = torch.tensor([0.0, 0.0], requires_grad=True)
-    mvn = MultivariateNormal(mean, filterVar)
-    # Evaluate the PDF at each point in the grid
-    pdf_values = mvn.log_prob(coordinates).exp() * amplitude  
-    pdf_values = pdf_values.view(ny, nx)
-    # Normalize to have max 1
-    pdf_values = pdf_values/torch.amax(pdf_values)
+#     # create a multivariate normal distribution with the filter variance centered at the origin
+#     mean = torch.tensor([0.0, 0.0], requires_grad=True)
+#     mvn = MultivariateNormal(mean, filterVar)
+#     # Evaluate the PDF at each point in the grid
+#     pdf_values = mvn.log_prob(coordinates).exp() * amplitude  
+#     pdf_values = pdf_values.view(ny, nx)
+#     # Normalize to have max 1
+#     pdf_values = pdf_values/torch.amax(pdf_values)
 
-    return pdf_values
+#     return pdf_values
 
+def createGaussFilter(sigx, sigy, coordinates, nx, ny, amplitude):
+    scale_x = nx / (2 * np.pi)
+    scale_y = ny / (2 * np.pi)
+
+    coords_x, coords_y = coordinates[:, 1], coordinates[:, 0]
+    gauss_filt = torch.exp(-0.5 * ((coords_x * sigx / scale_x) ** 2 + (coords_y * sigy / scale_y) ** 2)) * amplitude
+    gauss_filt = gauss_filt.reshape(ny, nx)
+    gauss_filt = gauss_filt / torch.amax(gauss_filt)
+
+    return gauss_filt
 
 def createGaussFilterPadded(sigx, sigy, nx, ny, amplitude):
     '''
     Create the magnitude of the Fourier transform of the Gauss object, at twice the resolution
     '''
     [x_padded,y_padded,coordinates_padded] = createMeshGrid(nx*2, ny*2)
-    return createGaussFilter(sigx, sigy, coordinates_padded, nx*2, ny*2, amplitude)
-
+    gauss_filt_padded = createGaussFilter(sigx, sigy, coordinates_padded, nx*2, ny*2, amplitude)
+    return gauss_filt_padded
 
 def createPhasor(x, y, mux, muy):
     '''
@@ -156,28 +165,6 @@ def createPhasorPadded(nx, ny, mux, muy):
     '''
     [x_padded,y_padded,coordinates_padded] = createMeshGrid(nx*2, ny*2)
     return createPhasor(x_padded, y_padded, mux, muy)
-    
-
-# def createWVFilt(mul, sigl, nl, m):
-#     mean = torch.tensor([mul], device=device)
-#     scale_factors = torch.tensor([sigl**2], device=device)
-#     covariance_matrix = torch.diag(scale_factors)  # No covariance, diagonal matrix
-
-#     coords = [torch.arange(-s // 2, s // 2, device=device, dtype=torch.float32) for s in [nl]]
-#     grid = torch.meshgrid(coords, indexing='ij')
-#     coordinates = torch.stack([g.flatten() for g in grid], dim=1)
-
-#     mvn = MultivariateNormal(mean, covariance_matrix)
-#     gaus_lam = mvn.log_prob(coordinates).exp()
-
-#     mout = torch.sum(m * gaus_lam, dim=2)
-#     return gaus_lam, mout
-
-# def createWVFilt(mul, sigl, nl, m):
-#     lam = torch.arange(0,nl)
-#     gaus_lam = torch.exp(-(lam-mul)**2/(2*sigl**2))
-#     mout = torch.sum(torch.mul(m,gaus_lam), dim=2)
-#     return gaus_lam, mout
 
 def createWVFilt(mul, sigl, nl, m):
     coords = torch.arange(-nl // 2, nl // 2)
