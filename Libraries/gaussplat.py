@@ -21,7 +21,8 @@ class GaussObject:
         self.sigl = torch.tensor(sigl, requires_grad=True, device=device)
         self.amplitude = torch.tensor(amp, requires_grad=True, device=device)
         self.learningrate = learningrate
-        self.optimizer = torch.optim.Adam([self.mux, self.muy, self.mul, self.sigx, self.sigy, self.sigl], lr=self.learningrate) # add new params in
+#         self.optimizer = torch.optim.Adam([self.mux, self.muy, self.mul, self.sigx, self.sigy, self.sigl], lr=self.learningrate)
+        self.optimizer = torch.optim.Adam([self.mux, self.muy], lr=self.learningrate)
 
     def __str__(self):
         return f"gaussObject(mu_x = {self.mux}, mu_y = {self.muy}, mu_l = {self.mul}), sig_x = {self.sigx}, sig_y = {self.sigy}, sig_l = {self.sigl}"
