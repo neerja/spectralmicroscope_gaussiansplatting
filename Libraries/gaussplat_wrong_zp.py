@@ -109,7 +109,8 @@ def createMeshGrid(nx, ny):
     coordinates = torch.stack([y.flatten(), x.flatten()], dim=1)
     return [x, y, coordinates]
 
-def createGaussFilter(sigx, sigy, coordinates, nx, ny, amplitude):
+def createGaussFilter(sigx, sigy, nx, ny, amplitude):
+    [x,y,coordinates] = createMeshGrid(nx, ny)
     scale_x = nx / (2 * np.pi)
     scale_y = ny / (2 * np.pi)
 
@@ -128,10 +129,11 @@ def createGaussFilterPadded(sigx, sigy, nx, ny, amplitude):
     gauss_filt_padded = createGaussFilter(sigx, sigy, coordinates_padded, nx*2, ny*2, amplitude)
     return gauss_filt_padded
 
-def createPhasor(x, y, mux, muy):
+def createPhasor(nx, ny, mux, muy):
     '''
     Create the phase of the Fourier transform of the Gauss object
     '''
+    [x,y,coordinates] = createMeshGrid(nx, ny)
     phase_ramp = 2.0 * torch.pi * (- (mux * x / x.shape[1]) - (muy * y / y.shape[0]))
     phasor = torch.cos(phase_ramp) + 1j * torch.sin(phase_ramp)
     return phasor, phase_ramp
@@ -151,38 +153,27 @@ def createWVFilt(mul, sigl, nl, m):
     mout = torch.sum(m * gaus_lam, dim=2)
     return gaus_lam, mout
 
-# this step calculates the measurement values
-def computeMeas(hf_padded, gauss_fm_padded, gauss_fp_padded, mout):
-    '''
-    h_expanded: The PSF in the spatial domain, expanded to match the dimensions of pdf_values, phasor, and mout
-    pdf_values: The magnitude of the FT of the Gaussian object
-    phasor: The phase of the FT of the Gaussian object
-    mout: The wavelength filter, created with the calibration filter array and Gaussian object's wavelength distribution
-    '''
-    # convolve in frequency domain; with padded arrays
-    bfm = hf_padded * gauss_fm_padded
-    bf = bfm * gauss_fp_padded
-    bout_padded = torch.fft.ifft2(torch.fft.fftshift(bf))
-    
-    # crop to remove padding
-    ny, nx = bout_padded.shape
-    cy, cx = ny // 2, nx // 2
-    half_ny, half_nx = cy // 2, cx // 2
-    bout = bout_padded[cy - half_ny: cy + half_ny, cx - half_nx: cx + half_nx]
-
-    # multiply by the weighted gaussian filter for wavelengths
-    b = (torch.abs(bout) * mout)
+def computeMeas(Hfft,pdf_values,phasor, mout):
+    bfft = torch.mul(Hfft, pdf_values)
+    bfft2 = torch.mul(bfft,phasor)
+    bout = torch.fft.ifft2(torch.fft.fftshift(bfft2))
+    b = torch.mul(torch.abs(bout),mout) # TODO: figure out why the abs is needed. i.e. why it's becoming negative with certain phaseramps. Maybe aliasing?
     b_norm = b / torch.norm(b)
-    return b_norm
+    return b
 
 # this step calculates the measurement values for a single gaussian object
 
-def forwardSingleGauss(g, nx, ny, nl, h_expanded, m):
-    gauss_fm_padded = createGaussFilterPadded(g.sigx, g.sigy, nx, ny, g.amplitude)
-    gauss_fp_padded, _ = createPhasorPadded(nx, ny, g.mux, g.muy)
-    gaus_lam, mout = createWVFilt(g.mul, g.sigl, nl, m)
-    h_padded = sdc.pad(h_expanded)
-    hf_padded = torch.fft.fftshift(torch.fft.fft2(h_padded))
-    b = computeMeas(hf_padded, gauss_fm_padded, gauss_fp_padded, mout)
+def computeMeas(Hfft,pdf_values,phasor, mout):
+    bfft = torch.mul(Hfft, pdf_values)
+    bfft2 = torch.mul(bfft,phasor)
+    bout = torch.fft.ifft2(torch.fft.fftshift(bfft2))
+    b = torch.mul(torch.abs(bout),mout) # TODO: figure out why the abs is needed. i.e. why it's becoming negative with certain phaseramps. Maybe aliasing?
     return b
 
+def forwardSingleGauss(g, nx, ny, nl, h_expanded, m):
+    gauss_fm_padded = createGaussFilter(g.sigx, g.sigy, nx, ny, g.amplitude)
+    gauss_fp_padded, _ = createPhasor(nx, ny, g.mux, g.muy)
+    gaus_lam, mout = createWVFilt(g.mul, g.sigl, nl, m)
+    hf = torch.fft.fftshift(torch.fft.fft2(h_expanded))
+    b = computeMeas(hf, gauss_fm_padded, gauss_fp_padded, mout)
+    return b

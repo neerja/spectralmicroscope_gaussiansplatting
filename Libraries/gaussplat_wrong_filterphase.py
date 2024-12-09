@@ -128,14 +128,13 @@ def createGaussFilterPadded(sigx, sigy, nx, ny, amplitude):
     gauss_filt_padded = createGaussFilter(sigx, sigy, coordinates_padded, nx*2, ny*2, amplitude)
     return gauss_filt_padded
 
-def createPhasor(x, y, mux, muy):
-    '''
-    Create the phase of the Fourier transform of the Gauss object
-    '''
-    phase_ramp = 2.0 * torch.pi * (- (mux * x / x.shape[1]) - (muy * y / y.shape[0]))
-    phasor = torch.cos(phase_ramp) + 1j * torch.sin(phase_ramp)
-    return phasor, phase_ramp
+def createPhasor(x,y, xshift,yshift):
+    freq_x = xshift # Adjust this value to control the frequency of the phase ramp
+    freq_y = yshift
 
+    phase_ramp =  2.0 * torch.pi * (-1*(freq_x * x) - (freq_y * y))
+    phasor = torch.exp(1j*phase_ramp)
+    return phasor, phase_ramp
 
 def createPhasorPadded(nx, ny, mux, muy):
     '''

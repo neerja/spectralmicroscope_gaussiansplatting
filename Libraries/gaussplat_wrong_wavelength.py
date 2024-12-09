@@ -145,10 +145,9 @@ def createPhasorPadded(nx, ny, mux, muy):
     return createPhasor(x_padded, y_padded, mux, muy)
 
 def createWVFilt(mul, sigl, nl, m):
-    coords = torch.arange(-nl // 2, nl // 2)
-    gaus_lam = torch.exp(-0.5 * ((coords - mul) / sigl)**2)
-    gaus_lam = gaus_lam / gaus_lam.sum()
-    mout = torch.sum(m * gaus_lam, dim=2)
+    lam = torch.arange(0, nl)
+    gaus_lam = torch.exp(-(lam-mul)**2/(2*sigl**2))
+    mout = torch.sum(torch.mul(m,gaus_lam), dim=2)
     return gaus_lam, mout
 
 # this step calculates the measurement values

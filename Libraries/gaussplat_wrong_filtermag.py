@@ -19,6 +19,7 @@ class GaussObject:
         self.sigx = torch.tensor(sigx, requires_grad=True, device=device)
         self.sigy = torch.tensor(sigy, requires_grad=True, device=device)
         self.sigl = torch.tensor(sigl, requires_grad=True, device=device)
+        self.covariancematrix = torch.tensor([[sigy**2, 0.0], [0.0, sigx**2]], requires_grad=True)
         self.amplitude = torch.tensor(amp, requires_grad=True, device=device)
         self.learningrate = learningrate
 #         self.optimizer = torch.optim.Adam([self.mux, self.muy, self.mul, self.sigx, self.sigy, self.sigl], lr=self.learningrate)
@@ -109,16 +110,19 @@ def createMeshGrid(nx, ny):
     coordinates = torch.stack([y.flatten(), x.flatten()], dim=1)
     return [x, y, coordinates]
 
-def createGaussFilter(sigx, sigy, coordinates, nx, ny, amplitude):
-    scale_x = nx / (2 * np.pi)
-    scale_y = ny / (2 * np.pi)
-
-    coords_x, coords_y = coordinates[:, 1], coordinates[:, 0]
-    gauss_filt = torch.exp(-0.5 * ((coords_x * sigx / scale_x) ** 2 + (coords_y * sigy / scale_y) ** 2)) * amplitude
-    gauss_filt = gauss_filt.reshape(ny, nx)
-    gauss_filt = gauss_filt / torch.amax(gauss_filt)
-
-    return gauss_filt
+def createGaussFilter(sigx, sigy, coordinates,nx,ny, amplitude, sf = 1e-8):
+    covariance_matrix = torch.tensor([[sigy**2, 0.0], [0.0, sigx**2]], requires_grad=True)
+    mean = torch.tensor([0.0, 0.0])
+    scaleFactor = torch.tensor([[sf*nx**2, 0.0],[  0.0, sf*ny**2]])
+    filterVar = torch.matmul(scaleFactor,covariance_matrix)
+    filterVar = (filterVar + filterVar.t()) / 2.0  # ensure that it's positive-definite
+    # Create a MultivariateNormal distribution
+    mvn = MultivariateNormal(mean, filterVar)
+    # Evaluate the PDF at each point in the grid
+    pdf_values = mvn.log_prob(coordinates).exp() * amplitude #TODO: maybe replace with my own implementation so I can be sure of the scaling? 
+    pdf_values = pdf_values.view(ny, nx) # doesn't work the other way
+    
+    return pdf_values
 
 def createGaussFilterPadded(sigx, sigy, nx, ny, amplitude):
     '''
