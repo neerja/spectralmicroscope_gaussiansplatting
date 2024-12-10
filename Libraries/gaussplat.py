@@ -21,8 +21,8 @@ class GaussObject:
         self.sigl = torch.tensor(sigl, requires_grad=True, device=device)
         self.amplitude = torch.tensor(amp, requires_grad=True, device=device)
         self.learningrate = learningrate
-#         self.optimizer = torch.optim.Adam([self.mux, self.muy, self.mul, self.sigx, self.sigy, self.sigl], lr=self.learningrate)
-        self.optimizer = torch.optim.Adam([self.mux, self.muy], lr=self.learningrate)
+        self.optimizer = torch.optim.Adam([self.mux, self.muy, self.mul, self.sigx, self.sigy, self.sigl], lr=self.learningrate)
+        # self.optimizer = torch.optim.Adam([self.mux, self.muy], lr=self.learningrate)
 
     def __str__(self):
         return f"gaussObject(mu_x = {self.mux}, mu_y = {self.muy}, mu_l = {self.mul}), sig_x = {self.sigx}, sig_y = {self.sigy}, sig_l = {self.sigl}"
@@ -30,7 +30,7 @@ class GaussObject:
     def computeValues(self, coordinates, ny, nx):
         """Compute the values of the Gaussian object at the given coordinates."""
         mean = torch.tensor([self.muy, self.mux], device=device)
-        covariance_matrix = torch.tensor([[self.sigy**2, 0.0], [0.0, self.sigx**2]])
+        covariance_matrix = torch.tensor([[self.sigy**2, 0.0], [0.0, self.sigx**2]], device=device)
         multivariate_normal = MultivariateNormal(mean, covariance_matrix)
         pdf_values = multivariate_normal.log_prob(coordinates).exp() * self.amplitude
         return pdf_values.view(ny, nx)
@@ -118,6 +118,8 @@ def createGaussFilter(sigx, sigy, coordinates, nx, ny, amplitude):
     gauss_filt = gauss_filt.reshape(ny, nx)
     gauss_filt = gauss_filt / torch.amax(gauss_filt)
 
+    del coords_x, coords_y
+    torch.cuda.empty_cache()
     return gauss_filt
 
 def createGaussFilterPadded(sigx, sigy, nx, ny, amplitude):
@@ -145,10 +147,12 @@ def createPhasorPadded(nx, ny, mux, muy):
     return createPhasor(x_padded, y_padded, mux, muy)
 
 def createWVFilt(mul, sigl, nl, m):
-    coords = torch.arange(-nl // 2, nl // 2)
+    coords = torch.arange(-nl // 2, nl // 2, device=device)
     gaus_lam = torch.exp(-0.5 * ((coords - mul) / sigl)**2)
     gaus_lam = gaus_lam / gaus_lam.sum()
     mout = torch.sum(m * gaus_lam, dim=2)
+    del coords
+    torch.cuda.empty_cache()
     return gaus_lam, mout
 
 # this step calculates the measurement values
@@ -173,6 +177,8 @@ def computeMeas(hf_padded, gauss_fm_padded, gauss_fp_padded, mout):
     # multiply by the weighted gaussian filter for wavelengths
     b = (torch.abs(bout) * mout)
     b_norm = b / torch.norm(b)
+    del bfm, bf, bout_padded, bout, b
+    torch.cuda.empty_cache()
     return b_norm
 
 # this step calculates the measurement values for a single gaussian object
@@ -184,5 +190,7 @@ def forwardSingleGauss(g, nx, ny, nl, h_expanded, m):
     h_padded = sdc.pad(h_expanded)
     hf_padded = torch.fft.fftshift(torch.fft.fft2(h_padded))
     b = computeMeas(hf_padded, gauss_fm_padded, gauss_fp_padded, mout)
+    del gauss_fm_padded, gauss_fp_padded, gaus_lam, mout, h_padded, hf_padded
+    torch.cuda.empty_cache()
     return b
 
